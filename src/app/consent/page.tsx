@@ -1,15 +1,21 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 export default function ConsentPage() {
-  const params = useSearchParams();
+  const [clientId, setClientId] = useState("cliente MCP");
+  const [scope, setScope] = useState("");
+  const [claims, setClaims] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const clientId = params.get("client_id") || "cliente MCP";
-  const scope = params.get("scope") || "";
-  const claims = params.get("claims");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setClientId(params.get("client_id") || "cliente MCP");
+    setScope(params.get("scope") || "");
+    setClaims(params.get("claims"));
+  }, []);
+
   const requested = useMemo(() => scope.split(/\s+/).filter(Boolean), [scope]);
 
   async function decide(event: FormEvent, accept: boolean) {
