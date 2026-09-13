@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI } from '@google/genai';
-import { GeminiSafetyBlockError, mapGeminiError } from '@/lib/gemini-errors';
+import Replicate from 'replicate';
 
-const genAI = new GoogleGenAI({
-  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || ''
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN || ''
 });
 
 export const runtime = 'nodejs';
@@ -19,60 +18,55 @@ export async function POST(request: NextRequest) {
 
     if (!file) return NextResponse.json({ error: 'No image file provided' }, { status: 400 });
     if (!instructions) return NextResponse.json({ error: 'No instructions provided' }, { status: 400 });
-    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-      return NextResponse.json({ error: 'Google API key not configured' }, { status: 500 });
+    if (!process.env.REPLICATE_API_TOKEN) {
+      return NextResponse.json({ error: 'Replicate API token not configured' }, { status: 500 });
     }
 
-    const imageBytes = await file.arrayBuffer();
-    const imageSize = imageBytes.byteLength;
-    const base64Data = Buffer.from(imageBytes).toString('base64');
+    const imageSize = file.size;
     const finalInstructions = `${instructions.trim()}${EDITING_GUARDRAIL}`;
 
     console.log('User prompt:', instructions);
     console.log('Image size (bytes):', imageSize);
     console.log('Image name:', file.name);
     console.log('Image type:', file.type);
-    console.log('Calling Nano Banana API...');
+    console.log('Calling FLUX Kontext Pro via Replicate...');
 
-    const response = await genAI.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: [{
-        parts: [
-          { text: finalInstructions },
-          { inlineData: { mimeType: file.type, data: base64Data } }
-        ]
-      }]
+    const output = await replicate.run('black-forest-labs/flux-kontext-pro', {
+      input: {
+        prompt: finalInstructions,
+        input_image: file,
+        aspect_ratio: 'match_input_image',
+        output_format: 'png'
+      }
     });
 
-    let generatedImageData: string | null = null;
-    let responseText: string | null = null;
+    const generatedImage = typeof output === 'string'
+      ? output
+      : output && typeof output === 'object' && 'url' in output
+        ? String((output as { url: string }).url)
+        : Array.isArray(output) && output.length > 0
+          ? String(output[0])
+          : null;
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.text) responseText = part.text;
-      else if (part.inlineData) generatedImageData = part.inlineData.data ?? null;
-    }
-
-    const blockReason = response.promptFeedback?.blockReason;
-    const finishReason = response.candidates?.[0]?.finishReason;
-    const SAFETY_FINISH_REASONS = new Set(['SAFETY', 'PROHIBITED_CONTENT', 'BLOCKLIST', 'SPII']);
-    if (!generatedImageData && (blockReason || (finishReason && SAFETY_FINISH_REASONS.has(finishReason)))) {
-      throw new GeminiSafetyBlockError(String(blockReason ?? finishReason));
+    if (!generatedImage) {
+      return NextResponse.json({ error: 'Replicate returned no image output' }, { status: 502 });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Image processed successfully by Nano Banana',
+      message: 'Image processed successfully by FLUX Kontext Pro',
       originalImageSize: imageSize,
       instructions,
-      responseText,
-      generatedImage: generatedImageData ? `data:image/png;base64,${generatedImageData}` : null
+      responseText: null,
+      generatedImage
     });
   } catch (error) {
-    console.error('Error processing with Nano Banana:', error);
-    const { status, message, kind, retryDelaySeconds } = mapGeminiError(error);
-    return NextResponse.json(
-      { error: message, errorKind: kind, retryDelaySeconds },
-      { status }
-    );
+    console.error('Error processing with Replicate:', error);
+    const message = error instanceof Error ? error.message : 'Unknown Replicate error';
+    const status = /401|unauthorized|authentication|token/i.test(message) ? 401 : 500;
+    return NextResponse.json({
+      error: message,
+      errorKind: status === 401 ? 'AUTHENTICATION' : 'PROVIDER_ERROR'
+    }, { status });
   }
 }
