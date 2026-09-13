@@ -1,10 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
 
 export default function SignInPage() {
-  const searchParams = useSearchParams();
+  const [callbackURL, setCallbackURL] = useState("/");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -12,13 +11,20 @@ export default function SignInPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setCallbackURL(params.get("callbackURL") || params.get("redirectTo") || "/");
+  }, []);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError("");
 
     const endpoint = mode === "signin" ? "/api/auth/sign-in/email" : "/api/auth/sign-up/email";
-    const body = mode === "signin" ? { email, password } : { email, password, name };
+    const body = mode === "signin"
+      ? { email, password, callbackURL }
+      : { email, password, name, callbackURL };
 
     try {
       const response = await fetch(endpoint, {
@@ -30,8 +36,7 @@ export default function SignInPage() {
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.message || data?.error?.message || "No se pudo iniciar sesión.");
 
-      const callback = searchParams.get("callbackURL") || searchParams.get("redirectTo") || "/";
-      window.location.assign(callback);
+      window.location.assign(data?.url || callbackURL || "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ocurrió un error.");
     } finally {
