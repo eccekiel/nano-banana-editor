@@ -14,6 +14,19 @@ function isSensitiveContentError(message: string) {
   return /flagged as sensitive|sensitive content|E005|input or output was flagged/i.test(message);
 }
 
+async function getOutputUrl(value: unknown): Promise<string | null> {
+  if (typeof value === 'string' && value.startsWith('http')) return value;
+  if (!value || typeof value !== 'object') return null;
+
+  const candidate = value as { url?: unknown };
+  if (typeof candidate.url === 'string' && candidate.url.startsWith('http')) return candidate.url;
+  if (typeof candidate.url === 'function') {
+    const url = await (candidate.url as () => Promise<unknown>)();
+    if (typeof url === 'string' && url.startsWith('http')) return url;
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -48,16 +61,16 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const generatedImage = typeof output === 'string'
-      ? output
-      : output && typeof output === 'object' && 'url' in output
-        ? String((output as { url: string }).url)
-        : Array.isArray(output) && output.length > 0
-          ? String(output[0])
-          : null;
+    const values = Array.isArray(output) ? output : [output];
+    let generatedImage: string | null = null;
+    for (const value of values) {
+      generatedImage = await getOutputUrl(value);
+      if (generatedImage) break;
+    }
 
     if (!generatedImage) {
-      return NextResponse.json({ error: 'Replicate returned no image output' }, { status: 502 });
+      console.error('Replicate returned an unsupported output shape:', output);
+      return NextResponse.json({ error: 'Replicate returned no usable image URL' }, { status: 502 });
     }
 
     return NextResponse.json({
