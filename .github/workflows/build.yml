@@ -1,0 +1,30 @@
+name: Build verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build Next.js app
+        env:
+          BETTER_AUTH_SECRET: ci-only-secret-that-is-long-enough-for-builds
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+          REPLICATE_API_TOKEN: ci-placeholder
+          MCP_EDIT_ENABLED: "false"
+          BETTER_AUTH_URL: http://localhost:3000
+          MCP_RESOURCE_URL: http://localhost:3000/api/mcp
+        run: npm run build
