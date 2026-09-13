@@ -2,6 +2,7 @@
   "name": "sol-image-editor",
   "version": "0.1.0",
   "private": true,
+  "description": "Sol Image Hub with authenticated MCP editing",
   "engines": { "node": "24.x" },
   "scripts": {
     "prebuild": "npx auth@latest migrate --yes",
