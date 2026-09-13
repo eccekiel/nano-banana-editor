@@ -11,10 +11,13 @@
     "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2",
+    "mcp-handler": "^2",
     "next": "15.5.23",
     "react": "19.1.9",
     "react-dom": "19.1.9",
-    "replicate": "^1.4.0"
+    "replicate": "^1.4.0",
+    "zod": "^4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
