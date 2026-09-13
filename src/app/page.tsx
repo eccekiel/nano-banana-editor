@@ -1,86 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-interface ImageHistoryItem {
-  image: string;
-  prompt: string;
-  timestamp: number;
-}
-
+interface LibraryItem { id: string; image: string; prompt: string; createdAt: number; }
 type MessageKind = "success" | "error" | "info";
-
-interface StatusMessage {
-  kind: MessageKind;
-  text: string;
-}
-
-const MESSAGE_STYLES: Record<MessageKind, string> = {
-  success: "bg-emerald-50 text-emerald-800 border border-emerald-200",
-  error: "bg-red-50 text-red-700 border border-red-200",
-  info: "bg-blue-50 text-blue-700 border border-blue-200",
-};
-
-const MESSAGE_ICONS: Record<MessageKind, string> = {
-  success: "✅",
-  error: "⚠️",
-  info: "ℹ️",
-};
-
-const NANO_BANANA_REPO_URL = "https://github.com/warpdotdev-demos/nano-banana-editor";
-const CLOUD_FACTORY_REPO_URL = "https://github.com/warpdotdev-demos/cloud-factory-demo";
-const WARP_URL = "https://warp.dev";
+interface StatusMessage { kind: MessageKind; text: string; }
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
-const MAX_IMAGE_LABEL = "4MB";
+const MAX_IMAGE_LABEL = "4 MB";
+const DB_NAME = "sol-image-editor";
+const DB_VERSION = 1;
+const STORE = "library";
 
-const formatBytes = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
+const formatBytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 
-const getSizeError = (file: File): string | null =>
-  file.size > MAX_IMAGE_BYTES
-    ? `Image is too large (${formatBytes(file.size)}). The maximum upload size is ${MAX_IMAGE_LABEL}.`
-    : null;
-
-function WarpMark() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 28 28" role="img" aria-label="Warp" className="shrink-0 rounded-md">
-      <defs>
-        <linearGradient id="warpMarkGradient" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#f97316" /><stop offset="55%" stopColor="#ec4899" /><stop offset="100%" stopColor="#8b5cf6" />
-        </linearGradient>
-      </defs>
-      <rect width="28" height="28" rx="7" fill="url(#warpMarkGradient)" />
-      <path d="M8 9l4.5 5-4.5 5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M14.5 19h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
-    </svg>
-  );
+function openLibrary(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "id" });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function readLibrary(): Promise<LibraryItem[]> {
+  if (typeof indexedDB === "undefined") return [];
+  const db = await openLibrary();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(STORE, "readonly").objectStore(STORE).getAll();
+    request.onsuccess = () => resolve((request.result as LibraryItem[]).sort((a, b) => b.createdAt - a.createdAt));
+    request.onerror = () => reject(request.error);
+  });
+}
+async function saveToLibrary(item: LibraryItem) {
+  const db = await openLibrary();
+  await new Promise<void>((resolve, reject) => {
+    const request = db.transaction(STORE, "readwrite").objectStore(STORE).put(item);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+async function deleteFromLibrary(id: string) {
+  const db = await openLibrary();
+  await new Promise<void>((resolve, reject) => {
+    const request = db.transaction(STORE, "readwrite").objectStore(STORE).delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
 }
 
-function SiteHeader() {
-  return (
-    <header className="border-b border-slate-200 bg-white/90 backdrop-blur supports-backdrop-blur:bg-white/60">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8">
-        <a href={WARP_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-md text-sm font-semibold text-slate-900">
-          <WarpMark /><span>Warp</span><span className="text-slate-300">/</span><span className="font-normal text-slate-500">Cloud Factory Demo</span>
-        </a>
-        <nav aria-label="Project repositories" className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-          <a href={NANO_BANANA_REPO_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-slate-900">Nano Banana Editor repo</a>
-          <a href={CLOUD_FACTORY_REPO_URL} target="_blank" rel="noopener noreferrer" className="text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-slate-900">Cloud Factory Demo repo</a>
-        </nav>
-      </div>
-    </header>
-  );
-}
-
-function LandingHero() {
-  return (
-    <section className="mx-auto max-w-3xl px-4 pb-2 pt-12 text-center sm:px-8 sm:pt-16">
-      <p className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm"><span aria-hidden="true">🏭</span> Built end-to-end by Warp&apos;s Cloud Factory</p>
-      <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">🍌 Nano Banana Editor</h1>
-      <p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">Upload a photo, describe an edit in plain English, and the AI image model rewrites it — then keep iterating on the result, edit after edit.</p>
-    </section>
-  );
-}
+function SolMark() { return <div className="grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-emerald-400 via-teal-500 to-violet-600 text-lg shadow-md">✦</div>; }
 
 export default function Home() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -88,160 +56,82 @@ export default function Home() {
   const [instructions, setInstructions] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(null);
-  const [imageHistory, setImageHistory] = useState<ImageHistoryItem[]>([]);
-  const [responseText, setResponseText] = useState<string | null>(null);
+  const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [showLibrary, setShowLibrary] = useState(false);
 
-  const messageClasses = statusMessage ? `flex items-start gap-2 p-3 rounded-lg text-sm ${MESSAGE_STYLES[statusMessage.kind]}` : "";
+  useEffect(() => { readLibrary().then(setLibrary).catch(console.error); }, []);
 
-  const dataURLtoFile = async (source: string, filename: string): Promise<File> => {
+  const dataURLtoFile = async (source: string, filename: string) => {
     const response = await fetch(source);
-    if (!response.ok) throw new Error(`Unable to download generated image (${response.status})`);
+    if (!response.ok) throw new Error(`No se pudo recuperar la imagen (${response.status})`);
     const blob = await response.blob();
     return new File([blob], filename, { type: blob.type || "image/png" });
   };
-
-  const revertToHistoryImage = async (historyItem: ImageHistoryItem, index: number) => {
-    try {
-      setImageHistory(prev => prev.slice(0, index));
-      setSelectedImage(historyItem.image);
-      const newFile = await dataURLtoFile(historyItem.image, `reverted_${Date.now()}.png`);
-      setSelectedFile(newFile);
-      setStatusMessage({ kind: "info", text: `Reverted to image #${index + 1} - "${historyItem.prompt}"` });
-      setInstructions("");
-      setResponseText(null);
-    } catch (error) {
-      console.error("Error reverting to history image:", error);
-      setStatusMessage({ kind: "error", text: "No se pudo recuperar esta imagen. Probá otra vez." });
-    }
+  const addToLibrary = async (image: string, prompt: string) => {
+    const item: LibraryItem = { id: crypto.randomUUID(), image, prompt, createdAt: Date.now() };
+    await saveToLibrary(item);
+    setLibrary(prev => [item, ...prev]);
   };
+  const useLibraryImage = async (item: LibraryItem) => {
+    try {
+      const file = await dataURLtoFile(item.image, `sol_${item.id}.png`);
+      setSelectedImage(item.image); setSelectedFile(file); setInstructions(""); setShowLibrary(false);
+      setStatusMessage({ kind: "info", text: "Imagen recuperada de tu biblioteca." });
+    } catch (error) { console.error(error); setStatusMessage({ kind: "error", text: "No se pudo abrir esa imagen." }); }
+  };
+  const removeLibraryImage = async (id: string) => { await deleteFromLibrary(id); setLibrary(prev => prev.filter(item => item.id !== id)); };
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const sizeError = getSizeError(file);
-    if (sizeError) {
-      event.target.value = "";
-      setSelectedFile(null);
-      setSelectedImage(null);
-      setStatusMessage({ kind: "error", text: `${sizeError} Please choose a smaller image.` });
-      return;
-    }
-    setStatusMessage(null);
-    setSelectedFile(file);
+    const file = event.target.files?.[0]; if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) { event.target.value = ""; setStatusMessage({ kind: "error", text: `La imagen pesa ${formatBytes(file.size)}. El máximo es ${MAX_IMAGE_LABEL}.` }); return; }
+    setStatusMessage(null); setSelectedFile(file);
     const reader = new FileReader();
-    reader.onload = e => setSelectedImage(e.target?.result as string);
+    reader.onload = async e => { const image = e.target?.result as string; setSelectedImage(image); try { await addToLibrary(image, "Imagen original"); } catch (error) { console.error(error); } };
     reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedFile || !instructions.trim()) {
-      setStatusMessage({ kind: "error", text: "Please provide both an image and instructions." });
-      return;
-    }
-    const sizeError = getSizeError(selectedFile);
-    if (sizeError) {
-      setStatusMessage({ kind: "error", text: `${sizeError} Revert to an earlier image in the History strip below, or reload to start over.` });
-      return;
-    }
-
-    setIsSubmitting(true);
-    setStatusMessage(null);
+    if (!selectedFile || !instructions.trim()) { setStatusMessage({ kind: "error", text: "Elegí una imagen y escribí qué querés cambiar." }); return; }
+    if (selectedFile.size > MAX_IMAGE_BYTES) { setStatusMessage({ kind: "error", text: "La imagen supera el límite de 4 MB." }); return; }
+    setIsSubmitting(true); setStatusMessage({ kind: "info", text: "Sol está procesando la imagen…" });
+    const prompt = instructions.trim();
     try {
-      const formData = new FormData();
-      formData.append("image", selectedFile);
-      formData.append("instructions", instructions.trim());
+      const formData = new FormData(); formData.append("image", selectedFile); formData.append("instructions", prompt);
       const response = await fetch("/api/process-image", { method: "POST", body: formData });
       const result = await response.json();
-
-      if (!response.ok) {
-        setStatusMessage({ kind: "error", text: result.error ?? "Something went wrong. Please try again." });
-        setResponseText(null);
-        return;
-      }
-
-      if (!result.generatedImage || typeof result.generatedImage !== "string") {
-        setStatusMessage({ kind: "error", text: "La IA procesó la imagen, pero no devolvió una imagen visible." });
-        return;
-      }
-
-      if (selectedImage) {
-        setImageHistory(prev => [...prev, { image: selectedImage, prompt: instructions.trim(), timestamp: Date.now() }]);
-      }
-
-      setSelectedImage(result.generatedImage);
-      setStatusMessage({ kind: "success", text: "Imagen procesada correctamente." });
-      setResponseText(result.responseText ?? null);
-      setInstructions("");
-
-      try {
-        const newFile = await dataURLtoFile(result.generatedImage, `edited_${Date.now()}.png`);
-        setSelectedFile(newFile);
-        const nextSizeError = getSizeError(newFile);
-        if (nextSizeError) setStatusMessage({ kind: "error", text: `${nextSizeError} This result is too large to edit further.` });
-      } catch (error) {
-        console.error("Could not prepare generated image for next iteration:", error);
-        setStatusMessage({ kind: "info", text: "Imagen generada. La vista está lista; para una nueva edición puede ser necesario volver a cargarla." });
-      }
-    } catch (error) {
-      console.error("Error submitting form:", error);
-      setStatusMessage({ kind: "error", text: "Failed to submit the request. Please check your connection and try again." });
-    } finally {
-      setIsSubmitting(false);
-    }
+      if (!response.ok) throw new Error(result.error ?? "No se pudo procesar la imagen.");
+      if (!result.generatedImage || typeof result.generatedImage !== "string") throw new Error("La IA no devolvió una imagen visible.");
+      setSelectedImage(result.generatedImage); setInstructions("");
+      await addToLibrary(result.generatedImage, prompt);
+      const newFile = await dataURLtoFile(result.generatedImage, `edited_${Date.now()}.png`);
+      setSelectedFile(newFile);
+      setStatusMessage({ kind: "success", text: "Listo. La nueva versión quedó guardada en tu biblioteca." });
+    } catch (error) { console.error(error); setStatusMessage({ kind: "error", text: error instanceof Error ? error.message : "No se pudo completar la edición." }); }
+    finally { setIsSubmitting(false); }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
-      <SiteHeader />
-      {!selectedImage && <LandingHero />}
-      <div className={`mx-auto w-full max-w-4xl px-4 pb-16 sm:px-8 ${imageHistory.length > 0 ? "pb-32" : ""} ${selectedImage ? "pt-12 sm:pt-16" : "pt-8"}`}>
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/60 sm:p-10">
-          <div className="text-center">
-            <h2 className="text-xl font-semibold text-slate-900 mb-1">{selectedImage ? "Edit your image" : "Upload an image to get started"}</h2>
-            <p className="text-sm text-slate-500">{selectedImage ? "Describe how you'd like to change it, then process with AI." : `Select an image from your computer (PNG, JPG, or GIF, up to ${MAX_IMAGE_LABEL}).`}</p>
-          </div>
+  const newImage = () => { setSelectedImage(null); setSelectedFile(null); setInstructions(""); setStatusMessage(null); };
 
-          <div className="space-y-8 mt-8">
-            {!selectedImage && (
-              <div className="space-y-4">
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6"><p className="mb-2 text-sm text-slate-500"><span className="font-semibold">Click to upload</span></p><p className="text-xs text-slate-500">PNG, JPG, GIF up to {MAX_IMAGE_LABEL}</p></div>
-                  <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
-                </label>
-                {statusMessage && <div className={`max-w-2xl mx-auto ${messageClasses}`} role="status"><span aria-hidden="true">{MESSAGE_ICONS[statusMessage.kind]}</span><span>{statusMessage.text}</span></div>}
-              </div>
-            )}
+  return <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-emerald-50/30 text-slate-900">
+    <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur"><div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-8">
+      <div className="flex items-center gap-3"><SolMark /><div><div className="font-bold leading-tight">Sol Image Editor</div><div className="text-xs text-slate-500">Tu estudio de edición con IA</div></div></div>
+      <button onClick={() => setShowLibrary(true)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50">📚 Biblioteca <span className="text-slate-400">{library.length}</span></button>
+    </div></header>
 
-            {selectedImage && (
-              <div className="space-y-6">
-                <div className="flex justify-center">
-                  <div className="relative w-full max-w-3xl overflow-hidden rounded-lg bg-slate-100 p-2">
-                    <img src={selectedImage} alt="Currently selected image being edited" className="block h-auto max-h-[70vh] w-full rounded-lg object-contain shadow-lg" />
-                  </div>
-                </div>
+    <section className="mx-auto max-w-4xl px-4 pb-4 pt-10 text-center sm:px-8 sm:pt-14">{!selectedImage ? <><p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">Sol</p><h1 className="mt-2 text-4xl font-bold tracking-tight sm:text-5xl">Editá una imagen como quieras</h1><p className="mx-auto mt-4 max-w-2xl text-lg text-slate-600">Subí una foto, indicá el cambio y FLUX hará la edición manteniendo la identidad y la escena.</p></> : <><h1 className="text-3xl font-bold">Tu imagen</h1><p className="mt-2 text-slate-500">Podés seguir editándola tantas veces como quieras.</p></>}</section>
 
-                <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl mx-auto">
-                  <div><label htmlFor="instructions" className="block text-sm font-medium text-slate-700 mb-2">Edit Instructions</label><input type="text" id="instructions" value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="Describe how you want to edit this image..." className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none transition-colors" disabled={isSubmitting} /></div>
-                  {statusMessage && <div className={messageClasses} role="status"><span aria-hidden="true">{MESSAGE_ICONS[statusMessage.kind]}</span><span>{statusMessage.text}</span></div>}
-                  <div className="flex justify-center"><button type="submit" disabled={isSubmitting || !instructions.trim()} className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 transition-colors font-medium disabled:bg-slate-400 disabled:cursor-not-allowed">{isSubmitting ? "Processing with AI..." : "Process with AI"}</button></div>
-                </form>
-                {responseText && <div className="p-4 bg-blue-50 rounded-lg border border-blue-200 mt-4 max-w-2xl mx-auto"><h3 className="font-medium text-blue-900 mb-2">Latest AI Response:</h3><p className="text-blue-800">{responseText}</p></div>}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+    <section className="mx-auto max-w-4xl px-4 pb-28 sm:px-8"><div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-xl shadow-slate-200/50 sm:p-8">
+      {!selectedImage ? <label className="flex h-72 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:border-emerald-400 hover:bg-emerald-50/30"><div className="text-5xl">🖼️</div><div className="mt-4 text-lg font-semibold">Elegí una imagen</div><div className="mt-1 text-sm text-slate-500">PNG, JPG o GIF · hasta {MAX_IMAGE_LABEL}</div><input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} /></label> : <div className="space-y-6">
+        <div className="overflow-hidden rounded-2xl bg-slate-100 p-2"><img src={selectedImage} alt="Imagen seleccionada" className="mx-auto block max-h-[68vh] w-full rounded-xl object-contain" /></div>
+        <form onSubmit={handleSubmit} className="mx-auto max-w-2xl space-y-3"><label htmlFor="instructions" className="block text-sm font-semibold text-slate-700">¿Qué querés cambiar?</label><input id="instructions" value={instructions} onChange={e => setInstructions(e.target.value)} disabled={isSubmitting} placeholder="Ej.: Cambiá el color de la ropa a bordó oscuro, sin modificar nada más." className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100" />
+          <div className="flex flex-wrap gap-2 text-xs"><button type="button" onClick={() => setInstructions("Cambiá solamente el color de la ropa a verde esmeralda, manteniendo intactos rostro, cuerpo, pose, fondo e iluminación.")} className="rounded-full bg-emerald-50 px-3 py-2 text-emerald-700">✨ Cambio de color</button><button type="button" onClick={() => setInstructions("Cambiá solamente la ropa por un conjunto elegante y delicado, manteniendo intactos rostro, cuerpo, pose, encuadre, fondo e iluminación.")} className="rounded-full bg-violet-50 px-3 py-2 text-violet-700">👗 Vestuario</button><button type="button" onClick={() => setInstructions("Hacé una variación de pose natural y fotográfica, manteniendo la misma persona, rostro, proporciones, vestuario, fondo e iluminación.")} className="rounded-full bg-sky-50 px-3 py-2 text-sky-700">📸 Pose</button></div>
+          {statusMessage && <div className={`rounded-xl p-3 text-sm ${statusMessage.kind === "error" ? "border border-red-200 bg-red-50 text-red-700" : statusMessage.kind === "success" ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-slate-200 bg-slate-50 text-slate-600"}`}>{statusMessage.text}</div>}
+          <button type="submit" disabled={isSubmitting || !instructions.trim()} className="w-full rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white shadow-lg transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">{isSubmitting ? "Procesando con FLUX…" : "✨ Editar con Sol"}</button>
+        </form><button onClick={newImage} className="mx-auto block text-sm text-slate-500 underline underline-offset-4 hover:text-slate-800">Elegir otra imagen</button>
+      </div>}
+    </div></section>
 
-      {imageHistory.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg p-4">
-          <div className="max-w-6xl mx-auto"><h3 className="text-sm font-medium text-slate-700 mb-3">Image History</h3><div className="flex space-x-3 overflow-x-auto pb-2">
-            {imageHistory.map((item, index) => (
-              <div key={item.timestamp} className="flex-shrink-0"><div className="w-20 h-20 relative group cursor-pointer hover:ring-2 hover:ring-violet-500 rounded-lg transition-all" onClick={() => revertToHistoryImage(item, index)} title={`Click to revert to: "${item.prompt}"`}><img src={item.image} alt={`Edit history step ${index + 1}`} className="w-full h-full rounded-lg object-cover" /><div className="absolute inset-0 bg-transparent group-hover:bg-black group-hover:bg-opacity-50 transition-all rounded-lg flex items-center justify-center"><span className="text-white text-xs opacity-0 group-hover:opacity-100 font-medium">#{index + 1}</span></div></div><div className="mt-1 text-xs text-slate-500 text-center max-w-20 truncate">{item.prompt}</div></div>
-            ))}
-          </div></div>
-        </div>
-      )}
-    </div>
-  );
+    {showLibrary && <div className="fixed inset-0 z-50 bg-slate-950/40 p-3 sm:p-8" onClick={() => setShowLibrary(false)}><aside onClick={e => e.stopPropagation()} className="ml-auto flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-slate-200 p-5"><div><h2 className="text-xl font-bold">📚 Biblioteca</h2><p className="text-sm text-slate-500">Tus imágenes quedan guardadas en este dispositivo.</p></div><button onClick={() => setShowLibrary(false)} className="rounded-full bg-slate-100 px-3 py-2">✕</button></div><div className="grid flex-1 grid-cols-2 gap-3 overflow-y-auto p-4 sm:grid-cols-3">{library.length === 0 ? <div className="col-span-full py-20 text-center text-slate-500">Todavía no hay imágenes guardadas.</div> : library.map(item => <div key={item.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"><button onClick={() => useLibraryImage(item)} className="block w-full"><img src={item.image} alt={item.prompt} className="aspect-square w-full object-cover" /></button><div className="p-2"><div className="truncate text-xs text-slate-600">{item.prompt}</div><div className="mt-2 flex justify-between gap-2"><button onClick={() => useLibraryImage(item)} className="text-xs font-semibold text-emerald-700">Usar</button><button onClick={() => removeLibraryImage(item.id)} className="text-xs text-red-500">Borrar</button></div></div></div>)}</div></aside></div>}
+  </main>;
 }
