@@ -1,13 +1,11 @@
 import { requireMcpAuth } from "@better-auth/mcp";
-import { auth } from "@/lib/auth";
-import { createMcpHandler } from "@modelcontextprotocol/server";
+import { auth, mcpResource } from "@/lib/auth";
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import Replicate from "replicate";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-const resource = process.env.MCP_RESOURCE_URL || "http://localhost:3000/api/mcp";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "",
@@ -150,7 +148,7 @@ const protectedHandler = requireMcpAuth(
   auth,
   (request) => mcpHandler.fetch(request),
   {
-    resource,
+    resource: mcpResource,
     requiredScopes: ["mcp:edit"],
     challengeScopes: ["mcp:edit"],
   },
