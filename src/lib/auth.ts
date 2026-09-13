@@ -17,8 +17,9 @@ function getAppOrigin() {
   return "http://localhost:3000";
 }
 
+export const authBaseURL = getAppOrigin();
 export const mcpResource = (
-  process.env.MCP_RESOURCE_URL || `${getAppOrigin()}/api/mcp`
+  process.env.MCP_RESOURCE_URL || `${authBaseURL}/api/mcp`
 ).replace(/\/+$/, "");
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -32,7 +33,7 @@ if (pool && process.env.NODE_ENV !== "production") {
 }
 
 export const auth = betterAuth({
-  baseURL: getAppOrigin(),
+  baseURL: authBaseURL,
   secret: process.env.BETTER_AUTH_SECRET,
   ...(pool ? { database: pool } : {}),
   emailAndPassword: {
