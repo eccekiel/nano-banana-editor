@@ -5,22 +5,37 @@ import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { mcp } from "@better-auth/mcp";
 import { Pool } from "pg";
 
+function getAppOrigin() {
+  const explicit = process.env.BETTER_AUTH_URL?.replace(/\/+$/, "");
+  if (explicit) return explicit;
+
+  const host = process.env.VERCEL_ENV === "production"
+    ? process.env.VERCEL_PROJECT_PRODUCTION_URL
+    : process.env.VERCEL_URL;
+
+  if (host) return `https://${host}`;
+  return "http://localhost:3000";
+}
+
+const baseURL = getAppOrigin();
+const resource = (
+  process.env.MCP_RESOURCE_URL || `${baseURL}/api/mcp`
+).replace(/\/+$/, "");
+
 const databaseUrl = process.env.DATABASE_URL;
-const baseURL = process.env.BETTER_AUTH_URL;
-const resource = process.env.MCP_RESOURCE_URL;
-
-if (!databaseUrl) throw new Error("DATABASE_URL is not configured");
-if (!baseURL) throw new Error("BETTER_AUTH_URL is not configured");
-if (!resource) throw new Error("MCP_RESOURCE_URL is not configured");
-
 const globalForAuth = globalThis as unknown as { solAuthPool?: Pool };
-const pool = globalForAuth.solAuthPool ?? new Pool({ connectionString: databaseUrl });
-if (process.env.NODE_ENV !== "production") globalForAuth.solAuthPool = pool;
+const pool = databaseUrl
+  ? (globalForAuth.solAuthPool ?? new Pool({ connectionString: databaseUrl }))
+  : undefined;
+
+if (pool && process.env.NODE_ENV !== "production") {
+  globalForAuth.solAuthPool = pool;
+}
 
 export const auth = betterAuth({
   baseURL,
   secret: process.env.BETTER_AUTH_SECRET,
-  database: pool,
+  ...(pool ? { database: pool } : {}),
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
