@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
+import { authBaseURL, mcpResource } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function metadata() {
-  const resource = process.env.MCP_RESOURCE_URL;
-  const authorizationServer = process.env.BETTER_AUTH_URL;
-  if (!resource || !authorizationServer) {
-    throw new Error("MCP_RESOURCE_URL and BETTER_AUTH_URL are required");
-  }
-
   return {
-    resource,
-    authorization_servers: [authorizationServer],
+    resource: mcpResource,
+    authorization_servers: [authBaseURL],
     scopes_supported: ["openid", "profile", "email", "offline_access", "mcp:edit"],
     bearer_methods_supported: ["header"],
   };
