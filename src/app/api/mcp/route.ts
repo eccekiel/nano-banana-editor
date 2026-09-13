@@ -1,14 +1,13 @@
 import { requireMcpAuth } from "@better-auth/mcp";
 import { auth } from "@/lib/auth";
-import { createMcpHandler } from "mcp-handler";
+import { createMcpHandler } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import Replicate from "replicate";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const resource = process.env.MCP_RESOURCE_URL;
-if (!resource) throw new Error("MCP_RESOURCE_URL is not configured");
+const resource = process.env.MCP_RESOURCE_URL || "http://localhost:3000/api/mcp";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "",
@@ -52,92 +51,104 @@ async function outputToImageContent(value: unknown) {
   };
 }
 
-const mcpHandler = createMcpHandler((server) => {
-  server.registerTool(
-    "editor_status",
-    {
-      title: "Estado de Sol Image Editor",
-      description: "Comprueba el estado del puente MCP y qué capacidades están habilitadas.",
-      inputSchema: z.object({}),
-    },
-    async () => ({
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          editor: "Sol Image Editor",
-          mcp: "online",
-          oauth: "better-auth",
-          provider: process.env.REPLICATE_API_TOKEN ? "replicate" : "not_configured",
-          model: "black-forest-labs/flux-kontext-pro",
-          directEditing: process.env.MCP_EDIT_ENABLED === "true",
-        }),
-      }],
-    }),
-  );
+const mcpHandler = createMcpHandler(
+  () => {
+    const server = new McpServer({
+      name: "sol-image-editor",
+      version: "1.0.0",
+    });
 
-  server.registerTool(
-    "edit_image_from_url",
-    {
-      title: "Editar imagen con Sol",
-      description: "Edita una imagen remota con FLUX Kontext Pro manteniendo identidad, pose y encuadre salvo que la instrucción pida cambiarlos.",
-      inputSchema: z.object({
-        image_url: z.string().url().describe("URL HTTPS directa de la imagen de referencia."),
-        instructions: z.string().min(1).max(2000).describe("Edición que debe realizarse sobre la imagen."),
+    server.registerTool(
+      "editor_status",
+      {
+        title: "Estado de Sol Image Editor",
+        description: "Comprueba el estado del puente MCP y qué capacidades están habilitadas.",
+        inputSchema: z.object({}),
+      },
+      async () => ({
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            editor: "Sol Image Editor",
+            mcp: "online",
+            oauth: "better-auth",
+            provider: process.env.REPLICATE_API_TOKEN ? "replicate" : "not_configured",
+            model: "black-forest-labs/flux-kontext-pro",
+            directEditing: process.env.MCP_EDIT_ENABLED === "true",
+          }),
+        }],
       }),
-    },
-    async ({ image_url, instructions }) => {
-      if (process.env.MCP_EDIT_ENABLED !== "true") {
-        return {
-          content: [{
-            type: "text",
-            text: "El puente MCP está autenticado, pero la edición directa está protegida. Activá MCP_EDIT_ENABLED=true en Vercel para habilitar las acciones de escritura.",
-          }],
-        };
-      }
+    );
 
-      if (!process.env.REPLICATE_API_TOKEN) {
-        return { content: [{ type: "text", text: "REPLICATE_API_TOKEN no está configurado." }] };
-      }
-
-      const source = await fetch(image_url);
-      if (!source.ok) {
-        throw new Error(`No se pudo descargar la imagen de referencia (${source.status}).`);
-      }
-
-      const sourceType = source.headers.get("content-type") || "image/jpeg";
-      const sourceBytes = Buffer.from(await source.arrayBuffer());
-      const sourceFile = new File([sourceBytes], "reference-image", { type: sourceType });
-
-      const output = await replicate.run("black-forest-labs/flux-kontext-pro", {
-        input: {
-          prompt: `${instructions.trim()}${EDITING_GUARDRAIL}`,
-          input_image: sourceFile,
-          aspect_ratio: "match_input_image",
-          output_format: "png",
-        },
-      });
-
-      const values = Array.isArray(output) ? output : [output];
-      for (const value of values) {
-        const image = await outputToImageContent(value);
-        if (image) {
+    server.registerTool(
+      "edit_image_from_url",
+      {
+        title: "Editar imagen con Sol",
+        description: "Edita una imagen remota con FLUX Kontext Pro manteniendo identidad, pose y encuadre salvo que la instrucción pida cambiarlos.",
+        inputSchema: z.object({
+          image_url: z.string().url().describe("URL HTTPS directa de la imagen de referencia."),
+          instructions: z.string().min(1).max(2000).describe("Edición que debe realizarse sobre la imagen."),
+        }),
+      },
+      async ({ image_url, instructions }) => {
+        if (process.env.MCP_EDIT_ENABLED !== "true") {
           return {
-            content: [
-              { type: "text", text: "Edición realizada con FLUX Kontext Pro." },
-              image,
-            ],
+            content: [{
+              type: "text",
+              text: "El puente MCP está autenticado, pero la edición directa está protegida. Activá MCP_EDIT_ENABLED=true en Vercel para habilitar las acciones de escritura.",
+            }],
           };
         }
-      }
 
-      return { content: [{ type: "text", text: "Replicate no devolvió una imagen utilizable." }] };
-    },
-  );
-});
+        if (!process.env.REPLICATE_API_TOKEN) {
+          return { content: [{ type: "text", text: "REPLICATE_API_TOKEN no está configurado." }] };
+        }
+
+        const source = await fetch(image_url);
+        if (!source.ok) {
+          throw new Error(`No se pudo descargar la imagen de referencia (${source.status}).`);
+        }
+
+        const sourceType = source.headers.get("content-type") || "image/jpeg";
+        const sourceBytes = Buffer.from(await source.arrayBuffer());
+        const sourceFile = new File([sourceBytes], "reference-image", { type: sourceType });
+
+        const output = await replicate.run("black-forest-labs/flux-kontext-pro", {
+          input: {
+            prompt: `${instructions.trim()}${EDITING_GUARDRAIL}`,
+            input_image: sourceFile,
+            aspect_ratio: "match_input_image",
+            output_format: "png",
+          },
+        });
+
+        const values = Array.isArray(output) ? output : [output];
+        for (const value of values) {
+          const image = await outputToImageContent(value);
+          if (image) {
+            return {
+              content: [
+                { type: "text", text: "Edición realizada con FLUX Kontext Pro." },
+                image,
+              ],
+            };
+          }
+        }
+
+        return { content: [{ type: "text", text: "Replicate no devolvió una imagen utilizable." }] };
+      },
+    );
+
+    return server;
+  },
+  {
+    legacy: "reject",
+  },
+);
 
 const protectedHandler = requireMcpAuth(
   auth,
-  (request) => mcpHandler(request),
+  (request) => mcpHandler.fetch(request),
   {
     resource,
     requiredScopes: ["mcp:edit"],
