@@ -12,14 +12,19 @@ function isSensitiveContentError(message: string) {
 }
 
 async function getOutputUrl(value: unknown): Promise<string | null> {
-  if (typeof value === 'string' && value.startsWith('http')) return value;
+  if (typeof value === 'string' && /^https?:\/\//i.test(value)) return value;
+  if (value instanceof URL) return value.toString();
   if (!value || typeof value !== 'object') return null;
+
   const candidate = value as { url?: unknown };
-  if (typeof candidate.url === 'string' && candidate.url.startsWith('http')) return candidate.url;
+  if (candidate.url instanceof URL) return candidate.url.toString();
+  if (typeof candidate.url === 'string' && /^https?:\/\//i.test(candidate.url)) return candidate.url;
   if (typeof candidate.url === 'function') {
-    const url = await (candidate.url as () => Promise<unknown>)();
-    if (typeof url === 'string' && url.startsWith('http')) return url;
+    const result = await (candidate.url as () => Promise<unknown> | unknown)();
+    if (result instanceof URL) return result.toString();
+    if (typeof result === 'string' && /^https?:\/\//i.test(result)) return result;
   }
+
   return null;
 }
 
@@ -58,7 +63,10 @@ export async function POST(request: NextRequest) {
       generatedImage = await outputToDataUrl(value);
       if (generatedImage) break;
     }
-    if (!generatedImage) return NextResponse.json({ error: 'Replicate returned no usable image' }, { status: 502 });
+    if (!generatedImage) {
+      console.error('Replicate output had no recognized image URL. Output type:', typeof output, 'Output:', output);
+      return NextResponse.json({ error: 'Replicate returned no usable image' }, { status: 502 });
+    }
 
     return NextResponse.json({ success: true, message: 'Image processed successfully by FLUX Kontext Pro', originalImageSize: imageSize, instructions, responseText: null, generatedImage });
   } catch (error) {
