@@ -17,9 +17,8 @@ function getAppOrigin() {
   return "http://localhost:3000";
 }
 
-const baseURL = getAppOrigin();
-const resource = (
-  process.env.MCP_RESOURCE_URL || `${baseURL}/api/mcp`
+export const mcpResource = (
+  process.env.MCP_RESOURCE_URL || `${getAppOrigin()}/api/mcp`
 ).replace(/\/+$/, "");
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -33,7 +32,7 @@ if (pool && process.env.NODE_ENV !== "production") {
 }
 
 export const auth = betterAuth({
-  baseURL,
+  baseURL: getAppOrigin(),
   secret: process.env.BETTER_AUTH_SECRET,
   ...(pool ? { database: pool } : {}),
   emailAndPassword: {
@@ -45,7 +44,7 @@ export const auth = betterAuth({
     mcp({
       loginPage: "/sign-in",
       consentPage: "/consent",
-      resource,
+      resource: mcpResource,
       scopes: ["openid", "profile", "email", "offline_access", "mcp:edit"],
     }),
     cimd({
