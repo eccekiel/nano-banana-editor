@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function metadata() {
   const resource = process.env.MCP_RESOURCE_URL;
