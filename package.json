@@ -17,7 +17,6 @@
     "@better-auth/mcp": "^1.7.4",
     "@modelcontextprotocol/server": "^2",
     "better-auth": "^1.7.4",
-    "mcp-handler": "^2",
     "next": "15.5.23",
     "pg": "^8.16.3",
     "react": "19.1.9",
@@ -35,7 +34,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.23",
     "tailwindcss": "^4",
-    "tsx": "^4.23.11",
-    "typescript": "^5"
+    "typescript": "^5",
+    "tsx": "^4.23.11"
   }
 }
