@@ -27,4 +27,16 @@ jobs:
           MCP_EDIT_ENABLED: "false"
           BETTER_AUTH_URL: http://localhost:3000
           MCP_RESOURCE_URL: http://localhost:3000/api/mcp
-        run: npm run build
+        run: |
+          set +e
+          npm run build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          echo "BUILD_EXIT_CODE=$status" >> build.log
+          exit "$status"
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
