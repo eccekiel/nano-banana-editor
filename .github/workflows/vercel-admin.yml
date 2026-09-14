@@ -1,0 +1,48 @@
+name: Vercel remote administration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_SCOPE: dtrhuman-9746
+      VERCEL_PROJECT: nano-banana-editor
+      DATABASE_URL: ${{ secrets.SOL_DATABASE_URL }}
+      BETTER_AUTH_SECRET: ${{ secrets.SOL_BETTER_AUTH_SECRET }}
+      REPLICATE_API_TOKEN: ${{ secrets.SOL_REPLICATE_API_TOKEN }}
+      MCP_EDIT_ENABLED: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Link existing Vercel project
+        run: vercel link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+
+      - name: Sync production environment variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$DATABASE_URL" | vercel env add DATABASE_URL production --token "$VERCEL_TOKEN" --yes || true
+          printf '%s' "$BETTER_AUTH_SECRET" | vercel env add BETTER_AUTH_SECRET production --token "$VERCEL_TOKEN" --yes || true
+          printf '%s' "$REPLICATE_API_TOKEN" | vercel env add REPLICATE_API_TOKEN production --token "$VERCEL_TOKEN" --yes || true
+          printf '%s' "$MCP_EDIT_ENABLED" | vercel env add MCP_EDIT_ENABLED production --token "$VERCEL_TOKEN" --yes || true
+
+      - name: Deploy production
+        run: vercel deploy --prod --yes --token "$VERCEL_TOKEN" --scope "$VERCEL_SCOPE"
